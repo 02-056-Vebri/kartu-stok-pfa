@@ -692,10 +692,23 @@ export default function KartuStokPFA() {
     if (b === "Lainnya") return -1;
     return parseInt(a, 10) - parseInt(b, 10);
   });
-  const grouped = productCategories.map((cat) => ({
-    cat,
-    items: filteredProducts.filter((p) => p.category === cat),
-  })).filter((g) => g.items.length);
+  // Urutkan produk dalam tiap kategori berdasarkan angka satuan (ZAK/JB) dari kecil ke besar.
+  // Kalau angkanya sama, versi non-KITE ditaruh sebelum versi KITE.
+  const grouped = productCategories.map((cat) => {
+    const items = filteredProducts
+      .filter((p) => p.category === cat)
+      .slice()
+      .sort((a, b) => {
+        const wa = getUnitWeight(a.name) ?? 0;
+        const wb = getUnitWeight(b.name) ?? 0;
+        if (wa !== wb) return wa - wb;
+        const ka = a.name.toUpperCase().includes("KITE") ? 1 : 0;
+        const kb = b.name.toUpperCase().includes("KITE") ? 1 : 0;
+        if (ka !== kb) return ka - kb;
+        return a.name.localeCompare(b.name);
+      });
+    return { cat, items };
+  }).filter((g) => g.items.length);
 
   function openAddForm() {
     const today = todayISO();
