@@ -214,12 +214,14 @@ function buildSheetRows(productName, balancedTxns, unit) {
 
 // Ganti username/password di bawah ini dengan yang rahasia, hanya dikasih tau ke staff & kepala bagian yang bersangkutan
 const ACCOUNTS = [
-  { username: "pfa", password: "pfa1234", name: "Editor" },
+  { username: "pfa", password: "pfa1234", name: "Editor", role: "editor" },
+  { username: "viewer", password: "viewer1234", name: "Manager / Lainnya", role: "viewer" },
 ];
 
 export default function KartuStokPFA() {
   const [role, setRole] = useState(null); // null | 'editor' | 'viewer'
   const [loginStep, setLoginStep] = useState("choose"); // 'choose' | 'password'
+  const [loginRole, setLoginRole] = useState("editor"); // 'editor' | 'viewer' — pilihan tombol di step 'choose'
   const [userInput, setUserInput] = useState("");
   const [pwInput, setPwInput] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -721,13 +723,16 @@ export default function KartuStokPFA() {
     setFormOpen(true);
   }
 
-  function handleEditorLogin(e) {
+  function handleLogin(e) {
     if (e && e.preventDefault) e.preventDefault();
     const found = ACCOUNTS.find(
-      (a) => a.username.toLowerCase() === userInput.trim().toLowerCase() && a.password === pwInput.trim()
+      (a) =>
+        a.role === loginRole &&
+        a.username.toLowerCase() === userInput.trim().toLowerCase() &&
+        a.password === pwInput.trim()
     );
     if (found) {
-      setRole("editor");
+      setRole(found.role);
       setLoggedInName(found.name);
       setLoginError("");
       setUserInput("");
@@ -737,14 +742,10 @@ export default function KartuStokPFA() {
     }
   }
 
-  function loginAsViewer() {
-    setRole("viewer");
-    setLoggedInName("Manager / Lainnya");
-  }
-
   function logout() {
     setRole(null);
     setLoginStep("choose");
+    setLoginRole("editor");
     setUserInput("");
     setPwInput("");
     setLoginError("");
@@ -1164,14 +1165,14 @@ export default function KartuStokPFA() {
 
             {loginStep === "choose" && (
               <div className="ks-login-choices">
-                <button className="ks-login-choice" onClick={() => { setLoginStep("password"); setLoginError(""); }}>
+                <button className="ks-login-choice" onClick={() => { setLoginStep("password"); setLoginRole("editor"); setLoginError(""); }}>
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                     <path d="M15 5 19 9" />
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Editor</span>
                 </button>
-                <button className="ks-login-choice" onClick={loginAsViewer}>
+                <button className="ks-login-choice" onClick={() => { setLoginStep("password"); setLoginRole("viewer"); setLoginError(""); }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12Z" />
                     <circle cx="12" cy="12" r="3" />
@@ -1187,7 +1188,7 @@ export default function KartuStokPFA() {
                   type="text"
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleEditorLogin(e); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleLogin(e); }}
                   placeholder="Username"
                   autoFocus
                   style={{ marginTop: 0 }}
@@ -1197,7 +1198,7 @@ export default function KartuStokPFA() {
                     type={showPw ? "text" : "password"}
                     value={pwInput}
                     onChange={(e) => setPwInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleEditorLogin(e); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleLogin(e); }}
                     placeholder="Password"
                   />
                   <button type="button" className="ks-pw-toggle" onClick={() => setShowPw((v) => !v)} tabIndex={-1}>
@@ -1226,8 +1227,8 @@ export default function KartuStokPFA() {
                   </div>
                 )}
                 <div className="ks-login-form-actions">
-                  <button type="button" className="ks-btn ghost" onClick={() => { setLoginStep("choose"); setLoginError(""); setUserInput(""); setPwInput(""); }}>Back</button>
-                  <button type="button" className="ks-btn" onClick={handleEditorLogin}>
+                  <button type="button" className="ks-btn ghost" onClick={() => { setLoginStep("choose"); setLoginError(""); setUserInput(""); setPwInput(""); setLoginRole("editor"); }}>Back</button>
+                  <button type="button" className="ks-btn" onClick={handleLogin}>
                     Login
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12h14" />
