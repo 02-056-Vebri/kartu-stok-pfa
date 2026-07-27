@@ -755,6 +755,16 @@ export default function KartuStokPFA() {
     }
   }
 
+  // Viewer masuk langsung tanpa perlu isi username/password.
+  function loginAsViewer() {
+    const viewerAccount = ACCOUNTS.find((a) => a.role === "viewer");
+    setRole("viewer");
+    setLoggedInName(viewerAccount ? viewerAccount.name : "Manager / Lainnya");
+    setLoginError("");
+    setUserInput("");
+    setPwInput("");
+  }
+
   function logout() {
     setRole(null);
     setLoginStep("choose");
@@ -1185,7 +1195,7 @@ export default function KartuStokPFA() {
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Editor</span>
                 </button>
-                <button className="ks-login-choice" onClick={() => { setLoginStep("password"); setLoginRole("viewer"); setLoginError(""); }}>
+                <button className="ks-login-choice" onClick={loginAsViewer}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12Z" />
                     <circle cx="12" cy="12" r="3" />
