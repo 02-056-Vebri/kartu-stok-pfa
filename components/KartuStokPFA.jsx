@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { exportExcelProfessional, exportExcelAllProducts, exportExcelResume } from "./exportExcel";
 import { getItem, setItem, deleteItem } from "./appStorage";
+import { supabase } from "./supabaseClient";
 
 // ---------- Data produk (diambil dari STOCK_CARD_PFA_DES_2025.xlsx) ----------
 const RAW_PRODUCTS = [
@@ -212,11 +213,12 @@ function buildSheetRows(productName, balancedTxns, unit) {
   return rows;
 }
 
-// Ganti username/password di bawah ini dengan yang rahasia, hanya dikasih tau ke staff & kepala bagian yang bersangkutan
-const ACCOUNTS = [
-  { username: "pfa", password: "pfa1234", name: "Editor", role: "editor" },
-  { username: "viewer", password: "viewer1234", name: "Manager / Lainnya", role: "viewer" },
-];
+// Username singkat yang diketik di form login dipetakan ke email akun Supabase Auth.
+// Password TIDAK disimpan di sini lagi — divalidasi langsung oleh Supabase Auth.
+const USERNAME_TO_EMAIL = {
+  pfa: "editor@dover.local",
+  viewer: "viewer@dover.local",
+};
 
 export default function KartuStokPFA() {
   const [role, setRole] = useState(null); // null | 'editor' | 'viewer'
@@ -227,6 +229,7 @@ export default function KartuStokPFA() {
   const [showPw, setShowPw] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loggedInName, setLoggedInName] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [customProductNames, setCustomProductNames] = useState([]);
   const PRODUCTS = useMemo(() => {
     const merged = [...BASE_PRODUCTS];
@@ -272,6 +275,30 @@ export default function KartuStokPFA() {
 
   const selectedProduct = PRODUCTS.find((p) => p.id === selectedId);
   const [expandedCats, setExpandedCats] = useState(() => new Set([selectedProduct.category]));
+
+  // Restore sesi login (kalau sebelumnya sudah login dan browser belum ditutup/logout)
+  useEffect(() => {
+    let active = true;
+
+    async function restoreSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, name")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        if (active && profile) {
+          setRole(profile.role);
+          setLoggedInName(profile.name || (profile.role === "editor" ? "Editor" : "Manager / Lainnya"));
+        }
+      }
+    }
+
+    restoreSession();
+
+    return () => { active = false; };
+  }, []);
 
   function toggleCat(cat) {
     setExpandedCats((prev) => {
@@ -736,36 +763,58 @@ export default function KartuStokPFA() {
     setFormOpen(true);
   }
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     if (e && e.preventDefault) e.preventDefault();
-    const found = ACCOUNTS.find(
-      (a) =>
-        a.role === loginRole &&
-        a.username.toLowerCase() === userInput.trim().toLowerCase() &&
-        a.password === pwInput.trim()
-    );
-    if (found) {
-      setRole(found.role);
-      setLoggedInName(found.name);
-      setLoginError("");
-      setUserInput("");
-      setPwInput("");
-    } else {
+    setLoginError("");
+    setAuthLoading(true);
+
+    const typed = userInput.trim().toLowerCase();
+    const email = USERNAME_TO_EMAIL[typed] || userInput.trim();
+
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: pwInput.trim(),
+    });
+
+    if (authError || !authData?.user) {
       setLoginError("Incorrect username or password. Try again.");
+      setAuthLoading(false);
+      return;
     }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role, name")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+
+    if (profileError || !profile || profile.role !== loginRole) {
+      await supabase.auth.signOut();
+      setLoginError(
+        `Akun ini tidak terdaftar sebagai ${loginRole === "editor" ? "Editor" : "Viewer"}.`
+      );
+      setAuthLoading(false);
+      return;
+    }
+
+    setRole(profile.role);
+    setLoggedInName(profile.name || (profile.role === "editor" ? "Editor" : "Manager / Lainnya"));
+    setUserInput("");
+    setPwInput("");
+    setAuthLoading(false);
   }
 
-  // Viewer masuk langsung tanpa perlu isi username/password.
+  // Viewer masuk langsung tanpa perlu isi username/password dan tanpa login ke Supabase sama sekali.
   function loginAsViewer() {
-    const viewerAccount = ACCOUNTS.find((a) => a.role === "viewer");
     setRole("viewer");
-    setLoggedInName(viewerAccount ? viewerAccount.name : "Manager / Lainnya");
+    setLoggedInName("Manager / Lainnya");
     setLoginError("");
     setUserInput("");
     setPwInput("");
   }
 
-  function logout() {
+  async function logout() {
+    await supabase.auth.signOut();
     setRole(null);
     setLoginStep("choose");
     setLoginRole("editor");
@@ -1202,6 +1251,16 @@ export default function KartuStokPFA() {
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Viewer</span>
                 </button>
+                {loginError && (
+                  <div className="ks-form-error">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    {loginError}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1214,6 +1273,7 @@ export default function KartuStokPFA() {
                   onKeyDown={(e) => { if (e.key === "Enter") handleLogin(e); }}
                   placeholder="Username"
                   autoFocus
+                  disabled={authLoading}
                   style={{ marginTop: 0 }}
                 />
                 <div className="ks-pw-wrap" style={{ marginTop: 10 }}>
@@ -1223,6 +1283,7 @@ export default function KartuStokPFA() {
                     onChange={(e) => setPwInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleLogin(e); }}
                     placeholder="Password"
+                    disabled={authLoading}
                   />
                   <button type="button" className="ks-pw-toggle" onClick={() => setShowPw((v) => !v)} tabIndex={-1}>
                     {showPw ? (
@@ -1250,8 +1311,8 @@ export default function KartuStokPFA() {
                   </div>
                 )}
                 <div className="ks-login-form-actions">
-                  <button type="button" className="ks-btn ghost" onClick={() => { setLoginStep("choose"); setLoginError(""); setUserInput(""); setPwInput(""); setLoginRole("editor"); }}>Back</button>
-                  <button type="button" className="ks-btn" onClick={handleLogin}>
+                  <button type="button" className="ks-btn ghost" onClick={() => { setLoginStep("choose"); setLoginError(""); setUserInput(""); setPwInput(""); setLoginRole("editor"); }} disabled={authLoading}>Back</button>
+                  <button type="button" className="ks-btn" onClick={handleLogin} disabled={authLoading}>
                     Login
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 12h14" />
