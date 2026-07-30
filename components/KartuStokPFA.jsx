@@ -890,6 +890,8 @@ export default function KartuStokPFA() {
           --positive-dim: rgba(79,169,138,0.14);
           --negative: #d9694f;
           --negative-dim: rgba(217,105,79,0.14);
+          --action-blue: #2f6fed;
+          --action-blue-hover: #2a5fd0;
           font-family: 'Inter', sans-serif;
           background: var(--bg);
           color: var(--text);
@@ -965,6 +967,9 @@ export default function KartuStokPFA() {
           font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;
         }
         .ks-btn:hover { filter: brightness(1.08); }
+        .ks-btn.ks-btn-blue { background: var(--action-blue); color: #fff; }
+        .ks-btn.ks-btn-blue:hover { background: var(--action-blue-hover); filter: none; }
+        .ks-btn.ks-btn-blue:disabled { background: var(--action-blue); }
         .ks-btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
         .ks-btn.small { padding: 6px 10px; font-size: 12px; }
         .ks-btn-danger { background: var(--negative); color: #fff; }
@@ -1215,6 +1220,20 @@ export default function KartuStokPFA() {
         .ks-login-theme .ks-btn.ghost { background: #fff; color: #111827; border: 1px solid var(--border); font-weight: 500; transition: all .15s ease; }
         .ks-login-theme .ks-btn.ghost:hover,
         .ks-login-theme .ks-btn.ghost:active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .ks-login-theme .ks-btn.ghost.ks-btn-plain:hover,
+        .ks-login-theme .ks-btn.ghost.ks-btn-plain:active {
+          background: #fff; border-color: var(--border); color: #111827;
+        }
+        .ks-login-theme .ks-btn.ks-btn-blue,
+        .ks-login-theme .ks-btn.ks-btn-blue:not(.ghost) {
+          background: var(--action-blue); border-color: var(--action-blue); color: #fff;
+        }
+        .ks-login-theme .ks-btn.ks-btn-blue:hover,
+        .ks-login-theme .ks-btn.ks-btn-blue:active,
+        .ks-login-theme .ks-btn.ks-btn-blue:not(.ghost):hover,
+        .ks-login-theme .ks-btn.ks-btn-blue:not(.ghost):active {
+          background: var(--action-blue-hover); border-color: var(--action-blue-hover); color: #fff;
+        }
         .ks-login-theme .ks-btn.ks-add-product-btn { border-radius: 6px; }
         .ks-login-theme .ks-login-form-actions { gap: 12px; }
         .ks-login-theme .ks-login-form-actions .ks-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -1333,8 +1352,8 @@ export default function KartuStokPFA() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className={`ks-role-badge ${role}`}>{role === "editor" ? "Editor" : "Viewer"}</span>
-          <button className="ks-btn ghost" onClick={openResume}>📊 Resume Bulanan</button>
-          <button className="ks-btn ghost" onClick={logout}>Keluar</button>
+          <button className="ks-btn ghost ks-btn-plain" onClick={openResume}>📊 Resume Bulanan</button>
+          <button className="ks-btn ghost ks-btn-plain" onClick={logout}>Keluar</button>
         </div>
       </div>
 
@@ -1363,7 +1382,7 @@ export default function KartuStokPFA() {
           </div>
           {role === "editor" && (
             <div className="ks-add-product-wrap">
-              <button className="ks-btn ghost ks-add-product-btn" onClick={openAddProductForm}>+ Tambah Jenis Produk</button>
+              <button className="ks-btn ghost ks-add-product-btn ks-btn-plain" onClick={openAddProductForm}>+ Tambah Jenis Produk</button>
             </div>
           )}
           <div className="ks-list">
@@ -1451,7 +1470,7 @@ export default function KartuStokPFA() {
                 )
               )}
               {role === "editor" && (
-                <button className="ks-btn" onClick={openAddForm}>+ Tambah Transaksi</button>
+                <button className="ks-btn ks-btn-blue" onClick={openAddForm}>+ Tambah Transaksi</button>
               )}
             </div>
           </div>
@@ -1465,7 +1484,7 @@ export default function KartuStokPFA() {
                 Semua produk
               </button>
             </div>
-            <button className="ks-btn" onClick={handleExport} disabled={exporting}>
+            <button className="ks-btn ks-btn-blue" onClick={handleExport} disabled={exporting}>
               {exporting ? "Menyiapkan..." : `⬇ Export ke Excel (${periodLabel})`}
             </button>
           </div>
@@ -1746,8 +1765,8 @@ export default function KartuStokPFA() {
             </div>
             {addProductError && <div className="ks-form-error">⚠ {addProductError}</div>}
             <div className="ks-modal-actions">
-              <button type="button" className="ks-btn ghost" onClick={() => setAddProductOpen(false)}>Batal</button>
-              <button type="button" className="ks-btn" onClick={submitNewProduct} disabled={addingProduct}>
+              <button type="button" className="ks-btn ghost ks-btn-plain" onClick={() => setAddProductOpen(false)}>Batal</button>
+              <button type="button" className="ks-btn ks-btn-blue" onClick={submitNewProduct} disabled={addingProduct}>
                 {addingProduct ? "Menyimpan..." : "Tambah"}
               </button>
             </div>
@@ -1824,8 +1843,8 @@ export default function KartuStokPFA() {
                   </table>
                 </div>
                 <div className="ks-modal-actions">
-                  <button type="button" className="ks-btn ghost" onClick={() => setResumeOpen(false)}>Tutup</button>
-                  <button type="button" className="ks-btn" onClick={handleResumeExport} disabled={resumeExporting || resumeRows.length === 0}>
+                  <button type="button" className="ks-btn ghost ks-btn-plain" onClick={() => setResumeOpen(false)}>Tutup</button>
+                  <button type="button" className="ks-btn ks-btn-blue" onClick={handleResumeExport} disabled={resumeExporting || resumeRows.length === 0}>
                     {resumeExporting ? "Menyiapkan..." : "⬇ Export Resume ke Excel"}
                   </button>
                 </div>
