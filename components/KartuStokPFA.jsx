@@ -276,28 +276,10 @@ export default function KartuStokPFA() {
   const selectedProduct = PRODUCTS.find((p) => p.id === selectedId);
   const [expandedCats, setExpandedCats] = useState(() => new Set([selectedProduct.category]));
 
-  // Restore sesi login (kalau sebelumnya sudah login dan browser belum ditutup/logout)
+  // Selalu wajib login ulang setiap kali website dibuka (nggak ada auto-login/ingat sesi),
+  // supaya kalau lupa pencet "Keluar" tetap aman dilihat siapa aja yang buka.
   useEffect(() => {
-    let active = true;
-
-    async function restoreSession() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role, name")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        if (active && profile) {
-          setRole(profile.role);
-          setLoggedInName(profile.name || (profile.role === "editor" ? "Editor" : "Manager / Lainnya"));
-        }
-      }
-    }
-
-    restoreSession();
-
-    return () => { active = false; };
+    supabase.auth.signOut();
   }, []);
 
   function toggleCat(cat) {
@@ -719,23 +701,10 @@ export default function KartuStokPFA() {
     if (b === "Lainnya") return -1;
     return parseInt(a, 10) - parseInt(b, 10);
   });
-  // Urutkan produk dalam tiap kategori berdasarkan angka satuan (ZAK/JB) dari kecil ke besar.
-  // Kalau angkanya sama, versi non-KITE ditaruh sebelum versi KITE.
-  const grouped = productCategories.map((cat) => {
-    const items = filteredProducts
-      .filter((p) => p.category === cat)
-      .slice()
-      .sort((a, b) => {
-        const wa = getUnitWeight(a.name) ?? 0;
-        const wb = getUnitWeight(b.name) ?? 0;
-        if (wa !== wb) return wa - wb;
-        const ka = a.name.toUpperCase().includes("KITE") ? 1 : 0;
-        const kb = b.name.toUpperCase().includes("KITE") ? 1 : 0;
-        if (ka !== kb) return ka - kb;
-        return a.name.localeCompare(b.name);
-      });
-    return { cat, items };
-  }).filter((g) => g.items.length);
+  const grouped = productCategories.map((cat) => ({
+    cat,
+    items: filteredProducts.filter((p) => p.category === cat),
+  })).filter((g) => g.items.length);
 
   function openAddForm() {
     const today = todayISO();
@@ -802,15 +771,6 @@ export default function KartuStokPFA() {
     setUserInput("");
     setPwInput("");
     setAuthLoading(false);
-  }
-
-  // Viewer masuk langsung tanpa perlu isi username/password dan tanpa login ke Supabase sama sekali.
-  function loginAsViewer() {
-    setRole("viewer");
-    setLoggedInName("Manager / Lainnya");
-    setLoginError("");
-    setUserInput("");
-    setPwInput("");
   }
 
   async function logout() {
@@ -890,8 +850,6 @@ export default function KartuStokPFA() {
           --positive-dim: rgba(79,169,138,0.14);
           --negative: #d9694f;
           --negative-dim: rgba(217,105,79,0.14);
-          --action-blue: #2f6fed;
-          --action-blue-hover: #2a5fd0;
           font-family: 'Inter', sans-serif;
           background: var(--bg);
           color: var(--text);
@@ -967,9 +925,6 @@ export default function KartuStokPFA() {
           font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;
         }
         .ks-btn:hover { filter: brightness(1.08); }
-        .ks-btn.ks-btn-blue { background: var(--action-blue); color: #fff; }
-        .ks-btn.ks-btn-blue:hover { background: var(--action-blue-hover); filter: none; }
-        .ks-btn.ks-btn-blue:disabled { background: var(--action-blue); }
         .ks-btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
         .ks-btn.small { padding: 6px 10px; font-size: 12px; }
         .ks-btn-danger { background: var(--negative); color: #fff; }
@@ -1220,20 +1175,6 @@ export default function KartuStokPFA() {
         .ks-login-theme .ks-btn.ghost { background: #fff; color: #111827; border: 1px solid var(--border); font-weight: 500; transition: all .15s ease; }
         .ks-login-theme .ks-btn.ghost:hover,
         .ks-login-theme .ks-btn.ghost:active { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .ks-login-theme .ks-btn.ghost.ks-btn-plain:hover,
-        .ks-login-theme .ks-btn.ghost.ks-btn-plain:active {
-          background: #fff; border-color: var(--border); color: #111827;
-        }
-        .ks-login-theme .ks-btn.ks-btn-blue,
-        .ks-login-theme .ks-btn.ks-btn-blue:not(.ghost) {
-          background: var(--action-blue); border-color: var(--action-blue); color: #fff;
-        }
-        .ks-login-theme .ks-btn.ks-btn-blue:hover,
-        .ks-login-theme .ks-btn.ks-btn-blue:active,
-        .ks-login-theme .ks-btn.ks-btn-blue:not(.ghost):hover,
-        .ks-login-theme .ks-btn.ks-btn-blue:not(.ghost):active {
-          background: var(--action-blue-hover); border-color: var(--action-blue-hover); color: #fff;
-        }
         .ks-login-theme .ks-btn.ks-add-product-btn { border-radius: 6px; }
         .ks-login-theme .ks-login-form-actions { gap: 12px; }
         .ks-login-theme .ks-login-form-actions .ks-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -1263,23 +1204,13 @@ export default function KartuStokPFA() {
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Editor</span>
                 </button>
-                <button className="ks-login-choice" onClick={loginAsViewer}>
+                <button className="ks-login-choice" onClick={() => { setLoginStep("password"); setLoginRole("viewer"); setLoginError(""); }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12Z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Viewer</span>
                 </button>
-                {loginError && (
-                  <div className="ks-form-error">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-                      <line x1="12" y1="9" x2="12" y2="13" />
-                      <line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                    {loginError}
-                  </div>
-                )}
               </div>
             )}
 
@@ -1352,8 +1283,8 @@ export default function KartuStokPFA() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className={`ks-role-badge ${role}`}>{role === "editor" ? "Editor" : "Viewer"}</span>
-          <button className="ks-btn ghost ks-btn-plain" onClick={openResume}>📊 Resume Bulanan</button>
-          <button className="ks-btn ghost ks-btn-plain" onClick={logout}>Keluar</button>
+          <button className="ks-btn ghost" onClick={openResume}>📊 Resume Bulanan</button>
+          <button className="ks-btn ghost" onClick={logout}>Keluar</button>
         </div>
       </div>
 
@@ -1382,7 +1313,7 @@ export default function KartuStokPFA() {
           </div>
           {role === "editor" && (
             <div className="ks-add-product-wrap">
-              <button className="ks-btn ghost ks-add-product-btn ks-btn-plain" onClick={openAddProductForm}>+ Tambah Jenis Produk</button>
+              <button className="ks-btn ghost ks-add-product-btn" onClick={openAddProductForm}>+ Tambah Jenis Produk</button>
             </div>
           )}
           <div className="ks-list">
@@ -1470,7 +1401,7 @@ export default function KartuStokPFA() {
                 )
               )}
               {role === "editor" && (
-                <button className="ks-btn ks-btn-blue" onClick={openAddForm}>+ Tambah Transaksi</button>
+                <button className="ks-btn" onClick={openAddForm}>+ Tambah Transaksi</button>
               )}
             </div>
           </div>
@@ -1484,7 +1415,7 @@ export default function KartuStokPFA() {
                 Semua produk
               </button>
             </div>
-            <button className="ks-btn ks-btn-blue" onClick={handleExport} disabled={exporting}>
+            <button className="ks-btn" onClick={handleExport} disabled={exporting}>
               {exporting ? "Menyiapkan..." : `⬇ Export ke Excel (${periodLabel})`}
             </button>
           </div>
@@ -1765,8 +1696,8 @@ export default function KartuStokPFA() {
             </div>
             {addProductError && <div className="ks-form-error">⚠ {addProductError}</div>}
             <div className="ks-modal-actions">
-              <button type="button" className="ks-btn ghost ks-btn-plain" onClick={() => setAddProductOpen(false)}>Batal</button>
-              <button type="button" className="ks-btn ks-btn-blue" onClick={submitNewProduct} disabled={addingProduct}>
+              <button type="button" className="ks-btn ghost" onClick={() => setAddProductOpen(false)}>Batal</button>
+              <button type="button" className="ks-btn" onClick={submitNewProduct} disabled={addingProduct}>
                 {addingProduct ? "Menyimpan..." : "Tambah"}
               </button>
             </div>
@@ -1843,8 +1774,8 @@ export default function KartuStokPFA() {
                   </table>
                 </div>
                 <div className="ks-modal-actions">
-                  <button type="button" className="ks-btn ghost ks-btn-plain" onClick={() => setResumeOpen(false)}>Tutup</button>
-                  <button type="button" className="ks-btn ks-btn-blue" onClick={handleResumeExport} disabled={resumeExporting || resumeRows.length === 0}>
+                  <button type="button" className="ks-btn ghost" onClick={() => setResumeOpen(false)}>Tutup</button>
+                  <button type="button" className="ks-btn" onClick={handleResumeExport} disabled={resumeExporting || resumeRows.length === 0}>
                     {resumeExporting ? "Menyiapkan..." : "⬇ Export Resume ke Excel"}
                   </button>
                 </div>
