@@ -773,6 +773,14 @@ export default function KartuStokPFA() {
     setAuthLoading(false);
   }
 
+  // Viewer klik langsung masuk tanpa proses login/autentikasi sama sekali (sesuai desain).
+  // Tidak ada panggilan ke Supabase Auth di sini — viewer langsung diberi akses baca.
+  function loginAsViewer() {
+    setLoginError("");
+    setRole("viewer");
+    setLoggedInName("Manager / Lainnya");
+  }
+
   async function logout() {
     await supabase.auth.signOut();
     setRole(null);
@@ -1068,6 +1076,10 @@ export default function KartuStokPFA() {
         .ks-login-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
         .ks-pw-wrap { position: relative; margin-top: 4px; }
         .ks-pw-wrap input { margin-top: 0; padding-right: 38px; }
+        .ks-pw-wrap input::-ms-reveal,
+        .ks-pw-wrap input::-ms-clear {
+          display: none;
+        }
         .ks-pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
           background: transparent; border: none; cursor: pointer; padding: 4px 6px; line-height: 1;
           color: var(--muted); display: flex; align-items: center; }
@@ -1204,13 +1216,23 @@ export default function KartuStokPFA() {
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Editor</span>
                 </button>
-                <button className="ks-login-choice" onClick={() => { setLoginStep("password"); setLoginRole("viewer"); setLoginError(""); }}>
+                <button className="ks-login-choice" onClick={loginAsViewer}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12Z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
                   <span className="ks-login-choice-title">Sign in as Viewer</span>
                 </button>
+                {loginError && (
+                  <div className="ks-form-error">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    {loginError}
+                  </div>
+                )}
               </div>
             )}
 
