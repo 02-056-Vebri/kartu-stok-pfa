@@ -1,46 +1,15 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { exportExcelProfessional, exportExcelAllProducts, exportExcelResume } from "./exportExcel";
-import { getItem, setItem, deleteItem } from "./appStorage";
-import { supabase } from "./supabaseClient";
-
-// ---------- Data produk (diambil dari STOCK_CARD_PFA_DES_2025.xlsx) ----------
-const RAW_PRODUCTS = [
-  "PFA 86% ZAK25", "PFA 88% ZAK25",
-  "PFA 92% ZAK25", "PFA 92% ZAK25 KITE", "PFA 92% JB300", "PFA 92% JB300 KITE",
-  "PFA 92% JB500", "PFA 92% JB500 KITE", "PFA 92% JB1000", "PFA 92% JB1000 KITE",
-  "PFA 96% ZAK25", "PFA 96% ZAK25 KITE", "PFA 96% JB450", "PFA 96% JB450 KITE",
-  "PFA 96% JB500", "PFA 96% JB500 KITE", "PFA 96% JB1000", "PFA 96% JB1000 KITE",
-  "PFA 97% ZAK20 KITE", "PFA 97% ZAK500 KITE",
-  "PFA Others @20KG", "PFA Others @25KG", "PFA Transisi @25KG", "PFA Others @JB500",
-];
-
-function categorize(name) {
-  const m = name.match(/(\d{1,3})%/);
-  if (m) return `${m[1]}%`;
-  return "Lainnya";
-}
-function slugify(name) {
-  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
-// Urutan kategori dihitung otomatis di dalam komponen (lihat variabel productCategories),
-// supaya kalau ada persentase baru (misal 99%) otomatis kesortir sesuai angka, bukan hardcode.
-// Menjaga id produk tetap sama seperti sebelumnya walau nama tampilannya berubah,
-// supaya data transaksi yang sudah tersimpan (dikunci ke id lama) tidak hilang/terpisah.
-const ID_OVERRIDES = {
-  "PFA 86% ZAK25": "pfa-86",
-  "PFA 88% ZAK25": "pfa-88",
-  "PFA Others @20KG": "pfa-others-20",
-  "PFA Others @25KG": "pfa-others-25",
-  "PFA Transisi @25KG": "pfa-transisi",
-  "PFA Others @JB500": "pfa-others-jb500",
-};
-function buildProduct(name) {
-  const trimmed = name.trim();
-  return { id: ID_OVERRIDES[trimmed] || slugify(trimmed), name: trimmed, category: categorize(trimmed) };
-}
-const BASE_PRODUCTS = RAW_PRODUCTS.map(buildProduct);
+import {
+  fetchTransactions, syncTransactions, fetchCustomProductNames, addProduct, deleteProduct,
+  loginWithPassword, signOut,
+} from "../lib/client/api";
+import {
+  BASE_PRODUCTS, buildProduct, getPackagingUnit, getUnitWeight,
+  LEGACY_DEMO_REFS, computeBalance, getLotPrefix, monthKey, lastDayOfMonthStr,
+} from "../lib/stockLogic";
 
 const MONTHS_ID = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTHS_ID_FULL = [
@@ -57,9 +26,6 @@ function fmtDate(iso) {
   if (isNaN(d)) return iso;
   return `${String(d.getDate()).padStart(2, "0")} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}`;
 }
-function monthKey(iso) {
-  return iso ? iso.slice(0, 7) : "";
-}
 function monthLabel(key) {
   const [y, m] = key.split("-");
   return `${MONTHS_ID[parseInt(m, 10) - 1]} ${y}`;
@@ -67,58 +33,11 @@ function monthLabel(key) {
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
-// Prefix Lot No otomatis dari tanggal: 2 digit tahun + huruf bulan (A=Jan ... L=Des) + 2 digit tanggal
-// Contoh: 2023-12-22 -> "23L22"
-function getLotPrefix(dateStr) {
-  if (!dateStr) return "";
-  const [y, m, d] = dateStr.split("-");
-  if (!y || !m || !d) return "";
-  const yy = y.slice(-2);
-  const monthNum = parseInt(m, 10);
-  if (!monthNum || monthNum < 1 || monthNum > 12) return "";
-  const monthLetter = String.fromCharCode(64 + monthNum); // 1->A, 2->B ... 12->L
-  return `${yy}${monthLetter}${d}`;
-}
 function numFmt(n) {
   return new Intl.NumberFormat("id-ID").format(n || 0);
 }
 
-function getPackagingUnit(name) {
-  const trimmed = name.trim();
-  if (KNOWN_UNIT_WEIGHTS[trimmed] != null) return `ZAK ${KNOWN_UNIT_WEIGHTS[trimmed]}`;
-  const upper = trimmed.toUpperCase();
-  let m = upper.match(/JB\s?(\d+)/);
-  if (m) return `JB ${m[1]}`;
-  m = upper.match(/ZAK\s?(\d+)/);
-  if (m) return `ZAK ${m[1]}`;
-  m = upper.match(/@\s?(\d+)/);
-  if (m) return `ZAK ${m[1]}`;
-  return "Zak";
-}
-// Produk yang beratnya nggak tercantum eksplisit di nama, tapi berat per satuannya sudah diketahui
-const KNOWN_UNIT_WEIGHTS = {};
-
-function getUnitWeight(name) {
-  const trimmed = name.trim();
-  if (KNOWN_UNIT_WEIGHTS[trimmed] != null) return KNOWN_UNIT_WEIGHTS[trimmed];
-  const upper = trimmed.toUpperCase();
-  let m = upper.match(/JB\s?(\d+)/);
-  if (m) return Number(m[1]);
-  m = upper.match(/ZAK\s?(\d+)/);
-  if (m) return Number(m[1]);
-  m = upper.match(/@\s?(\d+)/);
-  if (m) return Number(m[1]);
-  return null;
-}
-
-// Nomor referensi data contoh dari awal pengembangan prototype — otomatis dibersihkan kalau masih ketemu
-const LEGACY_DEMO_REFS = ["EXT25-00207", "PA25-08160"];
-
 // ---------- Helper untuk fitur Resume Bulanan (semua produk sekaligus) ----------
-function lastDayOfMonthStr(year, monthIndex) {
-  const days = new Date(year, monthIndex + 1, 0).getDate();
-  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(days).padStart(2, "0")}`;
-}
 function buildResumeSheetHeader() {
   return ["Produk", "IN", "IN (Kg)", "OUT", "OUT (Kg)", "Sisa (Satuan)", "Total (Kg)"];
 }
@@ -147,16 +66,6 @@ function buildResumeSheetRows(monthLabelText, rows) {
 }
 
 const EMPTY_FORM = { date: todayISO(), ref: "", type: "in", zak: "", kg: "", lot: "", palletEkspor: "", palletLokal: "", lokasi: "", ket: "" };
-
-function computeBalance(txns) {
-  const sorted = [...txns].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  let zak = 0, kg = 0;
-  return sorted.map((t) => {
-    if (t.type === "in") { zak += Number(t.zak) || 0; kg += Number(t.kg) || 0; }
-    else { zak -= Number(t.zak) || 0; kg -= Number(t.kg) || 0; }
-    return { ...t, sisaZak: zak, sisaKg: kg };
-  });
-}
 
 function buildSheetHeader(unit) {
   const unitBase = unit.replace(/\s*\d+$/, "").trim(); // "ZAK 25" -> "ZAK", "JB 1000" -> "JB"
@@ -212,13 +121,6 @@ function buildSheetRows(productName, balancedTxns, unit) {
   }
   return rows;
 }
-
-// Username singkat yang diketik di form login dipetakan ke email akun Supabase Auth.
-// Password TIDAK disimpan di sini lagi — divalidasi langsung oleh Supabase Auth.
-const USERNAME_TO_EMAIL = {
-  pfa: "editor@dover.local",
-  viewer: "viewer@dover.local",
-};
 
 export default function KartuStokPFA() {
   const [role, setRole] = useState(null); // null | 'editor' | 'viewer'
@@ -279,7 +181,7 @@ export default function KartuStokPFA() {
   // Selalu wajib login ulang setiap kali website dibuka (nggak ada auto-login/ingat sesi),
   // supaya kalau lupa pencet "Keluar" tetap aman dilihat siapa aja yang buka.
   useEffect(() => {
-    supabase.auth.signOut();
+    signOut();
   }, []);
 
   function toggleCat(cat) {
@@ -320,7 +222,15 @@ export default function KartuStokPFA() {
       const nextNames = [...customProductNames, trimmed];
       setCustomProductNames(nextNames);
       try {
-        await setItem("custom-products", JSON.stringify(nextNames));
+        const wt = getUnitWeight(trimmed);
+        const unitLabel = getPackagingUnit(trimmed);
+        await addProduct({
+          id: newP.id,
+          name: trimmed,
+          category: newP.category,
+          unit: unitLabel.startsWith("JB") ? "JB" : "ZAK",
+          unitWeight: wt,
+        });
       } catch (e) {
         showToast("Produk ditambahkan, tapi gagal disimpan permanen. Coba tambahkan lagi kalau hilang.");
       }
@@ -348,8 +258,7 @@ export default function KartuStokPFA() {
     setSelectedId(remaining[0].id);
     setConfirmDeleteProduct(false);
     try {
-      await setItem("custom-products", JSON.stringify(nextNames));
-      await deleteItem(`txns:${deletedId}`);
+      await deleteProduct(deletedId);
     } catch (e) {
       // penyimpanan mungkin gagal, tapi produk tetap dihapus dari tampilan
     }
@@ -365,15 +274,11 @@ export default function KartuStokPFA() {
     if (txnsByProduct[productId]) return;
     setLoadingProduct(true);
     try {
-      const res = await getItem(`txns:${productId}`);
-      let parsed = res ? JSON.parse(res.value) : [];
-      // Bersihkan otomatis data contoh dari awal pengembangan prototype (bukan data asli dari staff)
+      let parsed = await fetchTransactions(productId);
+      // Bersihkan data contoh dari awal pengembangan prototype (hanya di tampilan)
       if (LEGACY_DEMO_REFS.length) {
         const isLegacyDemo = parsed.length > 0 && parsed.every((t) => LEGACY_DEMO_REFS.includes(t.ref));
-        if (isLegacyDemo) {
-          parsed = [];
-          try { await setItem(`txns:${productId}`, JSON.stringify([])); } catch (_) {}
-        }
+        if (isLegacyDemo) parsed = [];
       }
       setTxnsByProduct((prev) => ({ ...prev, [productId]: parsed }));
     } catch (e) {
@@ -388,22 +293,24 @@ export default function KartuStokPFA() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await getItem("custom-products");
-        const parsed = res ? JSON.parse(res.value) : [];
-        if (Array.isArray(parsed)) setCustomProductNames(parsed);
+        const names = await fetchCustomProductNames();
+        if (Array.isArray(names)) setCustomProductNames(names);
       } catch (e) {
         // belum ada produk custom tersimpan, biarkan kosong
       }
     })();
   }, []);
 
+  const txnsRef = useRef({});
+  useEffect(() => { txnsRef.current = txnsByProduct; }, [txnsByProduct]);
+
   const persist = useCallback(async (productId, next) => {
-    setTxnsByProduct((prev) => ({ ...prev, [productId]: next }));
+    const prev = txnsRef.current[productId] || [];
+    setTxnsByProduct((p) => ({ ...p, [productId]: next }));
     try {
-      const res = await setItem(`txns:${productId}`, JSON.stringify(next));
-      if (!res) showToast("Gagal menyimpan ke penyimpanan permanen.");
+      await syncTransactions(productId, prev, next);
     } catch (e) {
-      showToast("Gagal menyimpan ke penyimpanan permanen.");
+      showToast("Gagal menyimpan ke database.");
     }
   }, [showToast]);
 
@@ -419,8 +326,7 @@ export default function KartuStokPFA() {
       const fetchResults = await Promise.all(
         needFetch.map(async (p) => {
           try {
-            const res = await getItem(`txns:${p.id}`);
-            let parsed = res ? JSON.parse(res.value) : [];
+            let parsed = await fetchTransactions(p.id);
             if (LEGACY_DEMO_REFS.length && parsed.length > 0 && parsed.every((t) => LEGACY_DEMO_REFS.includes(t.ref))) {
               parsed = [];
             }
@@ -630,8 +536,7 @@ export default function KartuStokPFA() {
       const fetchResults = await Promise.all(
         needFetch.map(async (p) => {
           try {
-            const res = await getItem(`txns:${p.id}`);
-            return [p.id, res ? JSON.parse(res.value) : []];
+            return [p.id, await fetchTransactions(p.id)];
           } catch (e) {
             return [p.id, []];
           }
@@ -737,37 +642,24 @@ export default function KartuStokPFA() {
     setLoginError("");
     setAuthLoading(true);
 
-    const typed = userInput.trim().toLowerCase();
-    const email = USERNAME_TO_EMAIL[typed] || userInput.trim();
-
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password: pwInput.trim(),
+    const result = await loginWithPassword({
+      username: userInput,
+      password: pwInput,
+      expectedRole: loginRole,
     });
 
-    if (authError || !authData?.user) {
-      setLoginError("Incorrect username or password. Try again.");
-      setAuthLoading(false);
-      return;
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("role, name")
-      .eq("id", authData.user.id)
-      .maybeSingle();
-
-    if (profileError || !profile || profile.role !== loginRole) {
-      await supabase.auth.signOut();
+    if (!result.ok) {
       setLoginError(
-        `Akun ini tidak terdaftar sebagai ${loginRole === "editor" ? "Editor" : "Viewer"}.`
+        result.reason === "wrong_role"
+          ? `Akun ini tidak terdaftar sebagai ${loginRole === "editor" ? "Editor" : "Viewer"}.`
+          : "Incorrect username or password. Try again."
       );
       setAuthLoading(false);
       return;
     }
 
-    setRole(profile.role);
-    setLoggedInName(profile.name || (profile.role === "editor" ? "Editor" : "Manager / Lainnya"));
+    setRole(result.role);
+    setLoggedInName(result.name || (result.role === "editor" ? "Editor" : "Manager / Lainnya"));
     setUserInput("");
     setPwInput("");
     setAuthLoading(false);
@@ -782,7 +674,7 @@ export default function KartuStokPFA() {
   }
 
   async function logout() {
-    await supabase.auth.signOut();
+    await signOut();
     setRole(null);
     setLoginStep("choose");
     setLoginRole("editor");
